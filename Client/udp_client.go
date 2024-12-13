@@ -2,13 +2,12 @@ package main
 
 import (
 	"encoding/base64"
-	"encoding/binary"
 	"fmt"
 	"github.com/google/uuid"
+	"github.com/notnil/chess"
 	"log"
 	"net"
 	"sync"
-	"time"
 )
 
 // ContinuousUDPListener manages a persistent UDP connection
@@ -129,7 +128,6 @@ func (l *ContinuousUDPListener) SendInitialHelloUDP() error {
 		return fmt.Errorf("error sending combined TLV message: %v", err)
 	}
 
-	log.Printf("Sent combined TLV message: Tag=HelloRequest, with Signature and Hash")
 	return nil
 }
 
@@ -137,37 +135,26 @@ func (l *ContinuousUDPListener) Listen() {
 	l.wg.Add(1)
 	go func() {
 		defer l.wg.Done()
-		defer func() {
-			if l.conn != nil {
-				l.conn.Close()
-			}
-		}()
 
-		buf := make([]byte, 1024) // Buffer size, adjust if needed for larger messages
+		buf := make([]byte, 1024) // Buffer for incoming data
 		for {
 			select {
 			case <-l.stopChan:
 				log.Println("UDP listener stopped.")
 				return
 			default:
-				// Set a read timeout to prevent blocking forever
-				l.conn.SetReadDeadline(time.Now().Add(5 * time.Second))
-
-				// Read from the connection
-				n, err := l.conn.Read(buf)
+				// Read from the UDP connection indefinitely
+				n, _, err := l.conn.ReadFromUDP(buf)
 				if err != nil {
-					// Handle connection errors
+					// Handle read errors
 					if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
-						// Timeout error, continue listening
+						// Timeout error, ignore and continue listening
 						continue
 					}
 
-					log.Printf("Error reading from server: %v", err)
+					log.Printf("Error reading from UDP connection: %v", err)
 					return
 				}
-
-				// Log raw data for debugging
-				log.Printf("Raw data received (%d bytes): %x", n, buf[:n])
 
 				// Decode the TLV message
 				tag, value, err := DecodeTLV(buf[:n])
@@ -180,16 +167,16 @@ func (l *ContinuousUDPListener) Listen() {
 				log.Printf("Received TLV response: Tag=%s, Length=%d, Value=%x", GetTagName(tag), len(value), value)
 
 				switch tag {
+				case lobbyResponse:
+
 				case UUIDPartie:
-					// Check if there's enough data
+					// Process UUIDPartie (existing functionality)
 					if len(value) < 16 {
 						log.Printf("Insufficient data for UUID: %d bytes", len(value))
 						continue
 					}
 
-					// Extract the last 16 bytes as the UUID
 					uuidBytes := value[len(value)-16:]
-
 					var uuidValue uuid.UUID
 					err = uuidValue.UnmarshalBinary(uuidBytes)
 					if err != nil {
@@ -197,63 +184,41 @@ func (l *ContinuousUDPListener) Listen() {
 						continue
 					}
 
-					log.Printf("Received UUID: %s", uuidValue.String())
-
-					// Save the UUID to the global game variable
 					SetGlobalGameID(uuidValue)
 
+				case BoardResponse:
+
+					// Decode the board state from the received value (FEN string)
+					game, err := DecodeBoardState(value)
+					if err != nil {
+						log.Printf("Error decoding board state: %v", err)
+						continue
+					}
+
+					// Print the board state
+					fmt.Println(game.Position().Board().Draw())
+
+					if game.Outcome() != chess.NoOutcome {
+						fmt.Printf("Game completed. %s by %s.\n", game.Outcome(), game.Method())
+					}
+
+					// Print the game moves (PGN)
+					fmt.Println(game.String())
+
+				// Other existing cases...
 				case HelloRequest:
 					log.Println("Received HelloRequest")
-					// Add specific handling for HelloRequest
+					// Handle HelloRequest
 
 				case HelloResponse:
 					log.Println("Received HelloResponse")
-					// Add specific handling for HelloResponse
-
-				case UUIDClient:
-					log.Println("Received UUIDClient")
-					// Add specific handling for UUIDClient
-
-				case Signature:
-					log.Println("Received Signature")
-					// Add specific handling for Signature
-
-				case String:
-					log.Printf("Received String: %s", string(value))
-					// Add specific handling for String type
-
-				case Int:
-					// Convert byte slice to int
-					intValue := binary.BigEndian.Uint32(value)
-					log.Printf("Received Int: %d", intValue)
-					// Add specific handling for Int type
-
-				case ByteData:
-					log.Printf("Received ByteData (hex): %x", value)
-					// Add specific handling for ByteData
-
-				case GameRequest:
-					log.Println("Received GameRequest")
-					// Add specific handling for GameRequest
-
-				case GameResponse:
-					log.Println("Received GameResponse")
-					// Add specific handling for GameResponse
-
-				case ActionRequest:
-					log.Println("Received ActionRequest")
-					// Add specific handling for ActionRequest
-
-				case ActionResponse:
-					log.Println("Received ActionResponse")
-					// Add specific handling for ActionResponse
+					// Handle HelloResponse
 
 				default:
-					// Print the received data in a human-readable format for unknown tags
-					log.Printf("Received unknown tag: %v", tag)
-					log.Printf("Received data (hex): %x", value)
-					log.Printf("Received data (string): %s", string(value))
-					log.Printf("Received data (base64): %s", base64.StdEncoding.EncodeToString(value))
+					log.Printf("Unknown tag: %v", tag)
+					log.Printf("Data (hex): %x", value)
+					log.Printf("Data (string): %s", string(value))
+					log.Printf("Data (base64): %s", base64.StdEncoding.EncodeToString(value))
 				}
 			}
 		}

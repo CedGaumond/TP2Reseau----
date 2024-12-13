@@ -5,7 +5,6 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"log"
 )
 
 // Tag represents the type of the TLV tag (Tag-Length-Value)
@@ -13,21 +12,24 @@ type Tag byte
 
 // Enum for TLV tags
 const (
-	HelloRequest   Tag = 0
-	HelloResponse  Tag = 100
-	UUIDClient     Tag = 1
-	UUIDPartie     Tag = 2
-	Signature      Tag = 3
-	String         Tag = 11
-	Int            Tag = 12
-	ByteData       Tag = 13
-	GameRequest    Tag = 30
-	GameResponse   Tag = 130
-	ActionRequest  Tag = 40
-	ActionResponse Tag = 140
-	lobby              = 177
-	LobbyRequest       = 169
-	lobbyResponse      = 170
+	HelloRequest     Tag = 0
+	HelloResponse    Tag = 100
+	UUIDClient       Tag = 1
+	UUIDPartie       Tag = 2
+	Signature        Tag = 3
+	String           Tag = 11
+	Int              Tag = 12
+	ByteData         Tag = 13
+	GameRequest      Tag = 30
+	GameResponse     Tag = 130
+	BoardRequest     Tag = 50
+	BoardResponse    Tag = 150
+	ActionRequest    Tag = 40
+	ActionResponse   Tag = 140
+	lobby                = 177
+	LobbyRequest         = 169
+	JoinLobbyRequest     = 178
+	lobbyResponse        = 170
 )
 
 // Error for insufficient data
@@ -100,9 +102,6 @@ func DecodeTLV(data []byte) (Tag, []byte, error) {
 
 	// Read the value (length bytes)
 	value := data[3 : 3+length]
-
-	// Log the tag and value for debugging
-	log.Printf("Decoded TLV: Tag=%s, Length=%d, Value=%s", GetTagName(tag), length, string(value))
 
 	return tag, value, nil
 }

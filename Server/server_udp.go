@@ -69,23 +69,26 @@ func (srv *UDPServer) listen() {
 			log.Println("Shutting down UDP server...")
 			return
 		default:
-			// Prepare buffer for reading
-			buf := make([]byte, 2048)
+			// Prepare buffer for reading and clear it
+			buf := make([]byte, 2048) // Initialize a new buffer for each iteration
 			n, clientAddr, err := srv.conn.ReadFromUDP(buf)
 			if err != nil {
 				log.Printf("Error reading UDP message: %v\n", err)
 				continue
 			}
 
+			// Clear the buffer slice by resetting its length to 0
+			buf = buf[:n]
+
 			// Log received data (for debugging purposes)
-			log.Printf("[DEBUG] Received data from %s: %x\n", clientAddr.String(), buf[:n])
+			log.Printf("[DEBUG] Received data from %s: %x\n", clientAddr.String(), buf)
 
 			// Process the received data in a goroutine
 			srv.wg.Add(1)
 			go func(data []byte, addr *net.UDPAddr) {
 				defer srv.wg.Done()
 				srv.handleClientConnection(addr, data)
-			}(buf[:n], clientAddr)
+			}(buf, clientAddr)
 		}
 	}
 }
@@ -114,7 +117,7 @@ func (srv *UDPServer) handleClientConnection(clientAddr *net.UDPAddr, initialDat
 
 func (srv *UDPServer) processIncomingData(data []byte, clientInfo *ClientInfo, clientAddress string, conn *net.UDPConn, clientAddr *net.UDPAddr) ([]byte, error) {
 	// Log the raw data received
-	log.Printf("Raw data received from %s: %v", clientAddress, data)
+	log.Printf("Raw data received from %s: %x", clientAddress, data)
 
 	// Ensure all parameters are non-nil
 	if data == nil || clientInfo == nil || conn == nil || clientAddr == nil {
@@ -149,7 +152,7 @@ func (srv *UDPServer) processIncomingData(data []byte, clientInfo *ClientInfo, c
 		return data[len(value)+3:], nil // Skip the processed bytes
 
 	case GameRequest:
-		// Handle GameRequest (game-related logic)
+		// Handle the GameRequest (game-related logic)
 		if err := HandleGameRequest(nil, conn, clientAddr, data, false); err != nil {
 			log.Printf("Error handling GameRequest: %v", err)
 			return nil, err
@@ -157,9 +160,34 @@ func (srv *UDPServer) processIncomingData(data []byte, clientInfo *ClientInfo, c
 		log.Println("GameRequest successfully processed.")
 		return data[len(value)+3:], nil // Skip the processed bytes
 
+	case LobbyRequest:
+		// Handle the LobbyListRequest
+		if err := HandleLobbyListRequest(nil, conn, clientAddr, data, false); err != nil {
+			log.Printf("Error handling LobbyListRequest: %v", err)
+			return nil, err
+		}
+		log.Println("LobbyListRequest successfully processed.")
+		return data[len(value)+3:], nil // Skip the processed bytes
+
+	case BoardRequest:
+		// Check if the data has enough bytes for the TLV structure
+		if len(data) < 3 { // Set `expectedLength` based on your protocol
+			log.Printf("Received BoardRequest with insufficient data length: %d bytes", len(data))
+			return nil, fmt.Errorf("insufficient data length")
+		}
+
+		// Handle the BoardRequest (game board-related logic)
+		if err := HandleBoardRequest(conn, nil, nil, data, true); err != nil {
+			log.Printf("Error handling BoardRequest: %v", err)
+			return nil, err
+		}
+		log.Println("BoardRequest successfully processed, BoardResponse sent.")
+		return data[len(value)+3:], nil // Skip the processed bytes
+
 	default:
 		// Log unknown tags for debugging
 		log.Printf("Unknown tag encountered: %d (%s)", tag, GetTagName(tag))
+		// Return the remaining data for further processing
 		return data[len(value)+3:], nil // Skip the processed bytes
 	}
 }

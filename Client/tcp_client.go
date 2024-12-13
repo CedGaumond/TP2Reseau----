@@ -1,9 +1,9 @@
 package main
 
 import (
-	"encoding/base64"
 	"fmt"
 	"github.com/google/uuid"
+	"github.com/notnil/chess"
 	"log"
 	"net"
 	"sync"
@@ -124,7 +124,6 @@ func (l *ContinuousTCPListener) SendInitialHello() error {
 		return fmt.Errorf("error sending combined TLV message: %v", err)
 	}
 
-	log.Printf("Sent combined TLV message: Tag=HelloRequest, with Signature and Hash")
 	return nil
 }
 
@@ -165,7 +164,6 @@ func (l *ContinuousTCPListener) Listen() {
 				}
 
 				// Log raw data for debugging
-				log.Printf("Raw data received (%d bytes): %x", n, buf[:n])
 
 				// Decode the TLV message
 				tag, value, err := DecodeTLV(buf[:n])
@@ -174,16 +172,8 @@ func (l *ContinuousTCPListener) Listen() {
 					continue
 				}
 
-				// Print the decoded response
-				log.Printf("Received TLV response: Tag=%s, Length=%d, Value=%x", GetTagName(tag), len(value), value)
-
 				switch tag {
-				
 				case lobbyResponse:
-					log.Println("Received Lobby List Response")
-					// Decode the list of lobbies
-					lobbyList := string(value)
-					log.Printf("Available lobbies: %s", lobbyList)
 
 				case UUIDPartie:
 					// Process UUIDPartie (existing functionality)
@@ -199,24 +189,70 @@ func (l *ContinuousTCPListener) Listen() {
 						log.Printf("Error unmarshaling UUID: %v", err)
 						continue
 					}
-
-					log.Printf("Received UUID: %s", uuidValue.String())
 					SetGlobalGameID(uuidValue)
 
-				// Other existing cases...
+				case BoardResponse:
+
+					// Decode the board state from the received value (FEN string)
+					game, err := DecodeBoardState(value)
+					if err != nil {
+						log.Printf("Error decoding board state: %v", err)
+						continue
+					}
+
+					// Print the board state
+					fmt.Println(game.Position().Board().Draw())
+
+					if game.Outcome() != chess.NoOutcome {
+						fmt.Printf("Game completed. %s by %s.\n", game.Outcome(), game.Method())
+					}
+
+				case JoinLobbyRequest:
+
+					// First, decode the TLV for the UUID
+					uuidTag, uuidValue, err := DecodeTLV(value)
+					if err != nil {
+						log.Printf("Error decoding UUID TLV: %v", err)
+						continue
+					}
+
+					// Verify the tag is ByteData
+					if uuidTag != ByteData {
+						log.Printf("Unexpected tag for UUID: %d, expected ByteData", uuidTag)
+						continue
+					}
+
+					// Ensure the UUID value has enough data (16 bytes)
+					if len(uuidValue) < 16 {
+						log.Printf("Insufficient data for UUID: %d bytes", len(uuidValue))
+						continue
+					}
+
+					// Extract the last 16 bytes for the UUID (same as UUIDPartie)
+					uuidBytes := uuidValue[len(uuidValue)-16:]
+
+					// Unmarshal the UUID from the bytes
+					var gameID uuid.UUID
+					err = gameID.UnmarshalBinary(uuidBytes)
+					if err != nil {
+
+						continue
+					}
+
+					// Log the parsed UUID
+
+					SetGlobalGameID(gameID)
+
 				case HelloRequest:
-					log.Println("Received HelloRequest")
+
 					// Handle HelloRequest
 
 				case HelloResponse:
-					log.Println("Received HelloResponse")
+
 					// Handle HelloResponse
 
 				default:
-					log.Printf("Unknown tag: %v", tag)
-					log.Printf("Data (hex): %x", value)
-					log.Printf("Data (string): %s", string(value))
-					log.Printf("Data (base64): %s", base64.StdEncoding.EncodeToString(value))
+
 				}
 			}
 		}

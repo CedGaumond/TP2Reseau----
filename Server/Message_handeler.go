@@ -235,6 +235,13 @@ func HandleGameRequest(conn net.Conn, udpConn *net.UDPConn, clientAddr *net.UDPA
 		return fmt.Errorf("failed to create new game session")
 	}
 
+	// Set the GameID for the client in ClientList
+	err = clientList.SetClientGameID(clientAddress, gameID)
+	if err != nil {
+		log.Printf("Error setting GameID for client: %v", err)
+		return fmt.Errorf("error setting GameID for client: %w", err)
+	}
+
 	// Convert the UUID to a byte array
 	uuidBytes, err := gameID.MarshalBinary()
 	if err != nil {
@@ -412,9 +419,292 @@ func HandleLobbyListRequest(conn net.Conn, udpConn *net.UDPConn, clientAddr *net
 	return nil
 }
 
-// HandleUnknownTag handles unknown tags and logs an error
-func HandleUnknownTag(tag Tag) {
-	log.Printf("Received unknown tag: %s\n", GetTagName(tag))
+var ddees = []byte("sldfkjasldkfjapwoi3")
+
+func HandleBoardRequest(conn net.Conn, udpConn *net.UDPConn, clientAddr *net.UDPAddr, data []byte, isTCP bool) error {
+	log.Println("Entered HandleBoardRequest")
+
+	var currentIndex int
+
+	// Decode the first TLV: BoardRequest (tag 50)
+	tag, boardRequestData, err := DecodeTLV(data[currentIndex:])
+	if err != nil {
+		log.Printf("Error decoding BoardRequest TLV: %v", err)
+		return fmt.Errorf("error decoding BoardRequest: %w", err)
+	}
+	currentIndex += len(boardRequestData) + 3
+	log.Printf("Decoded TLV: Tag=%d, Value=%s", tag, string(boardRequestData))
+
+	if tag != BoardRequest {
+		log.Printf("Unexpected tag for BoardRequest: %d", tag)
+		return fmt.Errorf("expected BoardRequest TLV, but got tag %d", tag)
+	}
+
+	// Decode the second TLV: Signature (tag 3)
+	tag, signature, err := DecodeTLV(data[currentIndex:])
+	if err != nil {
+		log.Printf("Error decoding Signature TLV: %v", err)
+		return fmt.Errorf("error decoding Signature: %w", err)
+	}
+	currentIndex += len(signature) + 3
+	log.Printf("Decoded TLV: Tag=%d, Value=%s", tag, string(signature))
+
+	if tag != ByteData {
+		log.Printf("Unexpected tag for Signature: %d", tag)
+		return fmt.Errorf("expected ByteData for Signature, but got tag %d")
+	}
+
+	// Determine the client address
+	var clientAddress string
+	if isTCP {
+		clientAddress = conn.RemoteAddr().String()
+	} else if clientAddr != nil {
+		clientAddress = clientAddr.String()
+	} else {
+		log.Println("Error: Unable to determine client address")
+		return fmt.Errorf("client address is missing")
+	}
+
+	// Fetch the client
+	client, exists := clientList.GetClient(clientAddress)
+	if !exists {
+		log.Printf("Client with address %s not found", clientAddress)
+		return fmt.Errorf("client not found")
+	}
+
+	// Fetch the game session
+	gameMutex.RLock()
+	session, ok := GameStore[client.GameID]
+	gameMutex.RUnlock()
+
+	if !ok {
+		log.Printf("No game session found for GameID: %s", client.GameID)
+		return fmt.Errorf("game session not found")
+	}
+
+	// Get the board state
+	boardState := session.GetBoardState()
+	if boardState == "" {
+		log.Printf("No valid board state for GameID: %s", client.GameID)
+		return fmt.Errorf("invalid board state")
+	}
+
+	// Encode the board state as a TLV
+	boardResponseTLV, err := EncodeTLV(BoardResponse, []byte(boardState))
+	if err != nil {
+		log.Printf("Error encoding BoardResponse TLV: %v", err)
+		return fmt.Errorf("error encoding BoardResponse: %w", err)
+	}
+
+	// Send the board state to the client
+	if isTCP {
+		if err := SendMessageTCP(conn, BoardResponse, boardResponseTLV); err != nil {
+			log.Printf("Error sending BoardResponse over TCP: %v", err)
+			return err
+		}
+		log.Println("BoardResponse sent over TCP.")
+	} else if udpConn != nil && clientAddr != nil {
+		if err := SendMessageUDP(udpConn, clientAddr, BoardResponse, boardResponseTLV); err != nil {
+			log.Printf("Error sending BoardResponse over UDP: %v", err)
+			return err
+		}
+		log.Println("BoardResponse sent over UDP.")
+	} else {
+		log.Println("Invalid connection type, cannot send response.")
+		return fmt.Errorf("invalid connection type")
+	}
+
+	return nil
+}
+
+func HandleMoveRequest(conn net.Conn, udpConn *net.UDPConn, clientAddr *net.UDPAddr, data []byte, isTCP bool) error {
+	log.Println("Entered HandleMoveRequest")
+
+	var currentIndex int
+	var moveNotation, gameIDStr, playerName, signature string
+
+	// First TLV should be ActionRequest (move)
+	tag, moveRequestData, err := DecodeTLV(data[currentIndex:])
+	if err != nil {
+		log.Printf("Error decoding first TLV (ActionRequest): %v", err)
+		return fmt.Errorf("error decoding first TLV: %w", err)
+	}
+	if tag != ActionRequest {
+		log.Printf("Unexpected first tag: %d", tag)
+		return fmt.Errorf("expected ActionRequest, got tag %d", tag)
+	}
+	moveNotation = string(moveRequestData)
+	currentIndex += len(moveRequestData) + 3
+	log.Printf("Move Notation: %s", moveNotation)
+
+	// Second TLV should be GameID (ByteData)
+	tag, gameIDData, err := DecodeTLV(data[currentIndex:])
+	if err != nil {
+		log.Printf("Error decoding GameID TLV: %v", err)
+		return fmt.Errorf("error decoding GameID TLV: %w", err)
+	}
+	if tag != ByteData {
+		log.Printf("Unexpected second tag: %d", tag)
+		return fmt.Errorf("expected ByteData for GameID, got tag %d", tag)
+	}
+	gameIDStr = string(gameIDData)
+	currentIndex += len(gameIDData) + 3
+	log.Printf("Game ID: %s", gameIDStr)
+
+	// Third TLV should be PlayerName (ByteData)
+	tag, playerNameData, err := DecodeTLV(data[currentIndex:])
+	if err != nil {
+		log.Printf("Error decoding PlayerName TLV: %v", err)
+		return fmt.Errorf("error decoding PlayerName TLV: %w", err)
+	}
+	if tag != ByteData {
+		log.Printf("Unexpected third tag: %d", tag)
+		return fmt.Errorf("expected ByteData for PlayerName, got tag %d", tag)
+	}
+	playerName = string(playerNameData)
+	currentIndex += len(playerNameData) + 3
+	log.Printf("Player Name: %s", playerName)
+
+	// Optional: Parse Signature and Hash TLVs if needed
+	// For now, we'll just log them
+	tag, signatureData, err := DecodeTLV(data[currentIndex:])
+	if err == nil && tag == ByteData {
+		signature = string(signatureData)
+		log.Printf("Signature: %s", signature)
+	}
+
+	// Parse the game ID
+	gameID, err := uuid.Parse(gameIDStr)
+	if err != nil {
+		return fmt.Errorf("invalid game ID: %v", err)
+	}
+
+	// Fetch the game session
+	gameMutex.Lock()
+	session, ok := GameStore[gameID]
+	gameMutex.Unlock()
+
+	if !ok {
+		log.Printf("No game session found for GameID: %s", gameID)
+		return fmt.Errorf("game session not found")
+	}
+
+	// Attempt to move the piece
+	err = Move(session.Game, moveNotation)
+
+	// Get the current board state (whether the move was successful or not)
+	boardState := session.GetBoardState()
+
+	// Prepare the response: if the move failed, just send the current board state unchanged
+	moveResponseData := boardState
+
+	// Encode the response with the board state
+	moveResponseTLV, err := EncodeTLV(ActionResponse, []byte(moveResponseData))
+	if err != nil {
+		log.Printf("Error encoding MoveResponse TLV: %v", err)
+		return fmt.Errorf("error encoding MoveResponse: %w", err)
+	}
+
+	// Send the updated board state (unchanged if the move failed)
+	if isTCP {
+		if err := SendMessageTCP(conn, ActionResponse, moveResponseTLV); err != nil {
+			log.Printf("Error sending MoveResponse over TCP: %v", err)
+			return err
+		}
+		log.Println("MoveResponse sent over TCP.")
+	} else if udpConn != nil && clientAddr != nil {
+		if err := SendMessageUDP(udpConn, clientAddr, ActionResponse, moveResponseTLV); err != nil {
+			log.Printf("Error sending MoveResponse over UDP: %v", err)
+			return err
+		}
+		log.Println("MoveResponse sent over UDP.")
+	} else {
+		log.Println("Invalid connection type, cannot send response.")
+		return fmt.Errorf("invalid connection type")
+	}
+
+	return nil
+}
+func HandleJoinRequest(conn net.Conn, udpConn *net.UDPConn, clientAddr *net.UDPAddr, data []byte, isTCP bool) error {
+	log.Println("Entered HandleJoinRequest")
+
+	var currentIndex int
+	var playerName string
+
+	// First TLV should be ActionRequest (move)
+	tag, _, err := DecodeTLV(data[currentIndex:])
+	if err != nil {
+		log.Printf("Error decoding first TLV (ActionRequest): %v", err)
+		return fmt.Errorf("error decoding first TLV: %w", err)
+	}
+	if tag != JoinLobbyRequest {
+		log.Printf("Unexpected first tag: %d", tag)
+		return fmt.Errorf("expected ActionRequest, got tag %d", tag)
+	}
+
+	// First TLV should be PlayerName (ByteData)
+	tag, playerNameData, err := DecodeTLV(data[currentIndex:])
+	if err != nil {
+		log.Printf("Error decoding PlayerName TLV: %v", err)
+		return fmt.Errorf("error decoding PlayerName TLV: %w", err)
+	}
+
+	playerName = string(playerNameData)
+	log.Printf("Player Name: %s", playerName)
+
+	// Find clients with matching name
+	matchedClients := clientList.GetClientByName(playerName)
+
+	var gameIDStr string
+	var gameID uuid.UUID
+
+	// If exactly one client found, use its game ID
+	if len(matchedClients) == 1 {
+		gameID = matchedClients[0].GameID
+		gameIDStr = gameID.String()
+		log.Printf("Found game ID for player %s: %s", playerName, gameIDStr)
+	} else if len(matchedClients) > 1 {
+		log.Printf("Multiple clients found with name %s", playerName)
+		// Could implement additional logic to disambiguate if needed
+		// For now, we'll use the first matched client's game ID
+		gameID = matchedClients[0].GameID
+		gameIDStr = gameID.String()
+	} else {
+		// No client found, generate a new game ID
+		gameID = uuid.New()
+		gameIDStr = gameID.String()
+		log.Printf("No existing client found, generated new game ID: %s", gameIDStr)
+	}
+
+	// Prepare the response with the GameID
+	responseData := []byte(gameIDStr)
+
+	// Encode the GameID as the response TLV
+	responseTLV, err := EncodeTLV(ByteData, responseData)
+	if err != nil {
+		log.Printf("Error encoding GameID TLV: %v", err)
+		return fmt.Errorf("error encoding GameID TLV: %w", err)
+	}
+
+	// Send the response back to the client
+	if isTCP {
+		if err := SendMessageTCP(conn, JoinLobbyRequest, responseTLV); err != nil {
+			log.Printf("Error sending response over TCP: %v", err)
+			return err
+		}
+		log.Println("Response sent over TCP.")
+	} else if udpConn != nil && clientAddr != nil {
+		if err := SendMessageUDP(udpConn, clientAddr, JoinLobbyRequest, responseTLV); err != nil {
+			log.Printf("Error sending response over UDP: %v", err)
+			return err
+		}
+		log.Println("Response sent over UDP.")
+	} else {
+		log.Println("Invalid connection type, cannot send response.")
+		return fmt.Errorf("invalid connection type")
+	}
+
+	return nil
 }
 
 // SendHelloResponseTCP sends a HelloResponse (Tag 101) to the TCP client with the signature

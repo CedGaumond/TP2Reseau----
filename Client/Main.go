@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"github.com/google/uuid"
 	"log"
 	"os"
 	"os/signal"
@@ -151,6 +152,7 @@ func main() {
 	// Wait for all goroutines to finish before exiting the program
 	wg.Wait()
 }
+
 func handleUserActions(scanner *bufio.Scanner, client *Client, conn interface{}, isTCP bool) {
 	for {
 		// Display available actions
@@ -170,8 +172,6 @@ func handleUserActions(scanner *bufio.Scanner, client *Client, conn interface{},
 			fmt.Println("Creating a new game...")
 
 			// Prepare the data for the GameRequest
-
-			// Ensure the correct connection type and call SendGameRequest
 			if isTCP {
 				// Assert the conn to *ContinuousTCPListener
 				tcpListener, ok := conn.(*ContinuousTCPListener)
@@ -197,17 +197,156 @@ func handleUserActions(scanner *bufio.Scanner, client *Client, conn interface{},
 					continue
 				}
 			}
-			// Simulate server response
+			// Simulate server response for game creation
 			fmt.Println("Game created successfully!")
+
+			// Send the board request after game creation
+			signatureBytes := []byte(client.Signature) // Convert signature from string to []byte
+			gameID := GlobalGame.gameId.String()       // Assuming the game ID is available
+
+			// Send BoardRequest and Signature TLVs to the server
+			if isTCP {
+				tcpListener, ok := conn.(*ContinuousTCPListener)
+				if !ok {
+					fmt.Println("Error: Invalid TCP connection type")
+					continue
+				}
+				if err := SendBoardRequest(tcpListener.conn, gameID, signatureBytes); err != nil {
+					fmt.Printf("Error sending board request: %v\n", err)
+					continue
+				}
+			} else {
+				udpListener, ok := conn.(*ContinuousUDPListener)
+				if !ok {
+					fmt.Println("Error: Invalid UDP connection type")
+					continue
+				}
+				if err := SendBoardRequest(udpListener.conn, gameID, signatureBytes); err != nil {
+					fmt.Printf("Error sending board request: %v\n", err)
+					continue
+				}
+			}
+
+			// Simulate server response for board request
+			fmt.Println("Board request sent successfully!")
+
+			// Enter the loop to send moves
+			for {
+				// Ask the user to enter a move
+				fmt.Println("Enter your move (e.g., 'e2e4') or type 'exit' to quit:")
+				scanner.Scan()
+				move := strings.TrimSpace(scanner.Text())
+
+				// Exit the loop if the user types 'exit'
+				if move == "exit" {
+					fmt.Println("Exiting move input loop...")
+					break
+				}
+
+				// Send the move to the server
+				if isTCP {
+					tcpListener, ok := conn.(*ContinuousTCPListener)
+					if !ok {
+						fmt.Println("Error: Invalid TCP connection type")
+						continue
+					}
+					if err := SendMoveRequest(tcpListener.conn, client, move); err != nil {
+						fmt.Printf("Error sending move request: %v\n", err)
+						continue
+					}
+				} else {
+					udpListener, ok := conn.(*ContinuousUDPListener)
+					if !ok {
+						fmt.Println("Error: Invalid UDP connection type")
+						continue
+					}
+					if err := SendMoveRequest(udpListener.conn, client, move); err != nil {
+						fmt.Printf("Error sending move request: %v\n", err)
+						continue
+					}
+				}
+
+				// Simulate server response for move (this could be more detailed)
+				fmt.Printf("Move '%s' sent successfully!\n", move)
+
+				// Now, send the board request to fetch the updated board state after the move
+				if isTCP {
+					tcpListener, ok := conn.(*ContinuousTCPListener)
+					if !ok {
+						fmt.Println("Error: Invalid TCP connection type")
+						continue
+					}
+					if err := SendBoardRequest(tcpListener.conn, GlobalGame.gameId.String(), signatureBytes); err != nil {
+						fmt.Printf("Error sending board request after move: %v\n", err)
+					} else {
+						fmt.Println("Board state request sent successfully!")
+					}
+				} else {
+					udpListener, ok := conn.(*ContinuousUDPListener)
+					if !ok {
+						fmt.Println("Error: Invalid UDP connection type")
+						continue
+					}
+					if err := SendBoardRequest(udpListener.conn, GlobalGame.gameId.String(), signatureBytes); err != nil {
+						fmt.Printf("Error sending board request after move: %v\n", err)
+					} else {
+						fmt.Println("Board state request sent successfully!")
+					}
+				}
+			}
+
 		case "2":
 			// Join a game (send request to server)
-			fmt.Println("Enter the game ID to join: ")
+			fmt.Println("Enter the game ID to join (UUID):")
 			scanner.Scan()
-			gameID := scanner.Text()
-			// Simulate joining the game
-			fmt.Printf("Joining game with ID %s...\n", gameID)
-			// Simulate server response
-			fmt.Printf("Successfully joined game %s!\n", gameID)
+			gameID := strings.TrimSpace(scanner.Text())
+
+			// Validate UUID format (optional, for robust error handling)
+			if _, err := uuid.Parse(gameID); err != nil {
+				fmt.Println("Invalid UUID format. Please enter a valid game ID.")
+				continue
+			}
+
+			// Prompt the user for their player name
+			fmt.Println("Enter your player name:")
+			scanner.Scan()
+			playerName := strings.TrimSpace(scanner.Text())
+
+			// Validate player name (optional check)
+			if playerName == "" {
+				fmt.Println("Player name cannot be empty. Please enter a valid player name.")
+				continue
+			}
+
+			fmt.Printf("Attempting to join game with ID %s and player name %s...\n", gameID, playerName)
+
+			if isTCP {
+				// Assert the conn to *ContinuousTCPListener
+				tcpListener, ok := conn.(*ContinuousTCPListener)
+				if !ok {
+					fmt.Println("Error: Invalid TCP connection type")
+					continue
+				}
+				// Send the request with game ID, player name, and client signature
+				if err := SendJoinGameRequest(tcpListener.conn, client, playerName); err != nil {
+					fmt.Printf("Error joining game: %v\n", err)
+					continue
+				}
+			} else {
+				// If it's a UDP connection:
+				udpListener, ok := conn.(*ContinuousUDPListener)
+				if !ok {
+					fmt.Println("Error: Invalid UDP connection type")
+					continue
+				}
+				// Send the request with game ID, player name, and client signature
+				if err := SendJoinGameRequest(udpListener.conn, client, playerName); err != nil {
+					fmt.Printf("Error joining game: %v\n", err)
+					continue
+				}
+			}
+			fmt.Printf("Successfully joined game %s as player %s!\n", gameID, playerName)
+
 		case "3":
 			// See lobby list (send request to server)
 			fmt.Println("Fetching lobby list...")
@@ -226,7 +365,6 @@ func handleUserActions(scanner *bufio.Scanner, client *Client, conn interface{},
 				// Send the lobby list request using TCP connection
 				lobbyList, err = SendLobbyListRequest(tcpListener.conn, client)
 			} else {
-				// Assert the conn to *ContinuousUDPListener
 				udpListener, ok := conn.(*ContinuousUDPListener)
 				if !ok {
 					fmt.Println("Error: Invalid UDP connection type")
@@ -247,10 +385,12 @@ func handleUserActions(scanner *bufio.Scanner, client *Client, conn interface{},
 			for _, lobby := range lobbyList {
 				fmt.Println(lobby)
 			}
+
 		case "4":
-			// Exit the menu
+
 			fmt.Println("Exiting...")
 			return
+
 		default:
 			fmt.Println("Invalid choice, please select a valid option.")
 		}

@@ -138,12 +138,39 @@ func (srv *TCPServer) processIncomingData(data []byte, clientAddress string, con
 		return data[len(value)+3:], nil // Skip the processed bytes
 
 	case LobbyRequest:
-
+		// Handle the LobbyListRequest
 		if err := HandleLobbyListRequest(conn, nil, nil, data, true); err != nil {
 			log.Printf("Error handling LobbyListRequest: %v", err)
 			return nil, err
 		}
 		log.Println("LobbyListRequest successfully processed, LobbyResponse sent.")
+		return data[len(value)+3:], nil // Skip the processed bytes
+
+	case JoinLobbyRequest:
+		// Handle the JoinLobbyRequest
+		if err := HandleJoinRequest(conn, nil, nil, data, true); err != nil {
+			log.Printf("Error handling JoinLobbyRequest: %v", err)
+			return nil, err
+		}
+		log.Println("JoinLobbyRequest successfully processed.")
+		return data[len(value)+3:], nil // Skip the processed bytes
+
+	case BoardRequest:
+		// Handle the BoardRequest (game board-related logic)
+		if err := HandleBoardRequest(conn, nil, nil, data, true); err != nil {
+			log.Printf("Error handling BoardRequest: %v", err)
+			return nil, err
+		}
+		log.Println("BoardRequest successfully processed, BoardResponse sent.")
+		return data[len(value)+3:], nil // Skip the processed bytes
+
+	case ActionRequest:
+		// Handle the MoveRequest (ActionRequest for making a move)
+		if err := HandleMoveRequest(conn, nil, nil, data, true); err != nil {
+			log.Printf("Error handling ActionRequest (MoveRequest): %v", err)
+			return nil, err
+		}
+		log.Println("ActionRequest (MoveRequest) successfully processed.")
 		return data[len(value)+3:], nil // Skip the processed bytes
 
 	default:

@@ -5,29 +5,23 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="0a05d60f-79dd-4af0-b1c1-d4b16b56b22c" name="Changes" comment="">
-      <change afterPath="$PROJECT_DIR$/.idea/modules.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/vcs.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/Client.go" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/Game.go" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/Main.go" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/Message_handeler.go" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/go.mod" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/tcp_client.go" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/tlv.go" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/udp_client.go" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/utils.go" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/../Server/ChessGame.go" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/../Server/Client.go" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/../Server/Hashing.go" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/../Server/Message_handeler.go" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/../Server/tlv.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/../Signatures.go" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/../TCPServer.go" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/../UDPServer.go" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/../Users.go" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/../go.mod" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/../go.sum" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/../main.go" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Game.go" beforeDir="false" afterPath="$PROJECT_DIR$/Game.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Main.go" beforeDir="false" afterPath="$PROJECT_DIR$/Main.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Message_handeler.go" beforeDir="false" afterPath="$PROJECT_DIR$/Message_handeler.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/go.mod" beforeDir="false" afterPath="$PROJECT_DIR$/go.mod" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/go.sum" beforeDir="false" afterPath="$PROJECT_DIR$/go.sum" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tcp_client.go" beforeDir="false" afterPath="$PROJECT_DIR$/tcp_client.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tlv.go" beforeDir="false" afterPath="$PROJECT_DIR$/tlv.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/udp_client.go" beforeDir="false" afterPath="$PROJECT_DIR$/udp_client.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/utils.go" beforeDir="false" afterPath="$PROJECT_DIR$/utils.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../Server/ChessGame.go" beforeDir="false" afterPath="$PROJECT_DIR$/../Server/ChessGame.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../Server/Client.go" beforeDir="false" afterPath="$PROJECT_DIR$/../Server/Client.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../Server/Message_handeler.go" beforeDir="false" afterPath="$PROJECT_DIR$/../Server/Message_handeler.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../Server/server_tcp.go" beforeDir="false" afterPath="$PROJECT_DIR$/../Server/server_tcp.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../Server/server_udp.go" beforeDir="false" afterPath="$PROJECT_DIR$/../Server/server_udp.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../Server/tlv.go" beforeDir="false" afterPath="$PROJECT_DIR$/../Server/tlv.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../Server/utils.go" beforeDir="false" afterPath="$PROJECT_DIR$/../Server/utils.go" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />

@@ -2,9 +2,10 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"net"
 )
+
+var kef = []byte("thisisaverysecretkeythatis32byteslong")
 
 func SendLobbyListRequest(conn net.Conn, client *Client) ([]string, error) {
 	// Ensure the connection is not nil
@@ -19,7 +20,6 @@ func SendLobbyListRequest(conn net.Conn, client *Client) ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("error encoding LobbyRequest: %v", err)
 	}
-	log.Printf("Encoded TLV: Tag=LobbyRequest, Length=%d, Value=%s", length, string(lobbyRequest))
 
 	// Encode the signature as TLV
 	signature := []byte(client.Signature)
@@ -27,46 +27,33 @@ func SendLobbyListRequest(conn net.Conn, client *Client) ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("error encoding signature: %v", err)
 	}
-	log.Printf("Encoded TLV: Tag=ByteData, Length=%d, Value=%s", len(signature), string(signature))
 
 	// Generate a hash of the entire message for integrity verification
 	combinedData := append(lobbyRequestTLV, signatureTLV...)
 	messageHash := GenerateSignature(combinedData)
-
-	// Log the calculated hash in the required format as a string
-	log.Printf("Calculated hash: %s", messageHash)
 
 	// Encode the hash as TLV
 	hashTLV, err := EncodeTLV(ByteData, []byte(messageHash))
 	if err != nil {
 		return nil, fmt.Errorf("error encoding hash: %v", err)
 	}
-	log.Printf("Encoded TLV: Tag=ByteData, Length=%d, Value=%s", len(messageHash), messageHash)
 
 	// Combine the TLVs into the final message
 	finalMessage := append(lobbyRequestTLV, signatureTLV...)
 	finalMessage = append(finalMessage, hashTLV...)
-
-	// Log the final message
-	log.Printf("Final message (Raw): %v", finalMessage)
 
 	// Directly send the encoded TLV message to the server
 	_, err = conn.Write(finalMessage)
 	if err != nil {
 		return nil, fmt.Errorf("error sending message: %v", err)
 	}
-	log.Println("Lobby List Request sent successfully.")
 
 	// Wait for the response from the server
-	// Read the server's response (you may need to handle timeouts or errors here)
 	buf := make([]byte, 1024) // Adjust buffer size if needed
 	n, err := conn.Read(buf)
 	if err != nil {
 		return nil, fmt.Errorf("error reading from connection: %v", err)
 	}
-
-	// Log the raw received data (for debugging purposes)
-	log.Printf("Raw data received (%d bytes): %x", n, buf[:n])
 
 	// Decode the TLV response
 	_, value, err := DecodeTLV(buf[:n])
@@ -82,6 +69,53 @@ func SendLobbyListRequest(conn net.Conn, client *Client) ([]string, error) {
 	return lobbies, nil
 }
 
+func SendJoinGameRequest(conn net.Conn, client *Client, playername string) error {
+	// 1. First, send the JoinLobbyRequest Tag
+	joinLobbyRequestTLV, err := EncodeTLV(JoinLobbyRequest, []byte{})
+	if err != nil {
+		return fmt.Errorf("error encoding JoinLobbyRequest: %v", err)
+	}
+
+	// Send the JoinLobbyRequest TLV
+	_, err = conn.Write(joinLobbyRequestTLV)
+	if err != nil {
+		return fmt.Errorf("error sending JoinLobbyRequest: %v", err)
+	}
+
+	// 2. Prepare and send the PlayerName TLV
+	playerNameData := []byte(playername)
+	playerNameTLV, err := EncodeTLV(ByteData, playerNameData)
+	if err != nil {
+		return fmt.Errorf("error encoding player name: %v", err)
+	}
+
+	// Send the PlayerName TLV
+	_, err = conn.Write(playerNameTLV)
+	if err != nil {
+		return fmt.Errorf("error sending player name: %v", err)
+	}
+
+	// Wait for the response
+	buf := make([]byte, 1024)
+	n, err := conn.Read(buf)
+	if err != nil {
+		return fmt.Errorf("error reading server response: %v", err)
+	}
+
+	// Decode the response to get the GameID
+	responseTag, _, err := DecodeTLV(buf[:n])
+	if err != nil {
+		return fmt.Errorf("error decoding server response: %v", err)
+	}
+
+	// Verify the response tag
+	if responseTag != ByteData {
+		return fmt.Errorf("unexpected response tag: %d", responseTag)
+	}
+
+	return nil
+}
+
 func SendGameRequest(conn net.Conn, client *Client) error {
 	// Ensure the connection is not nil
 	if conn == nil {
@@ -94,51 +128,138 @@ func SendGameRequest(conn net.Conn, client *Client) error {
 	if err != nil {
 		return fmt.Errorf("error encoding GameRequest: %v", err)
 	}
-	log.Printf("Encoded TLV: Tag=GameRequest, Length=%d, Value=%s", len(gameRequestBytes), string(gameRequestBytes))
 
 	// 2. Player Name TLV
-	firstname := []byte(client.FirstName)
-	playernameTLV, err := EncodeTLV(ByteData, firstname)
+	playerName := []byte(client.FirstName) // Ensure we are sending the correct player name
+	playerNameTLV, err := EncodeTLV(ByteData, playerName)
 	if err != nil {
 		return fmt.Errorf("error encoding player name: %v", err)
 	}
-	log.Printf("Encoded player name: %s", client.FirstName)
 
 	// 3. Signature TLV
-	signature := []byte(client.Signature)
+	signature := []byte(client.Signature) // Signature of the client
 	signatureTLV, err := EncodeTLV(ByteData, signature)
 	if err != nil {
 		return fmt.Errorf("error encoding signature: %v", err)
 	}
-	log.Printf("Encoded TLV: Tag=ByteData, Length=%d, Value=%s", len(signature), string(signature))
 
 	// Prepare combined data for hash calculation (excluding the hash TLV)
-	combinedData := append(gameRequestTLV, playernameTLV...)
-	combinedData = append(combinedData, signatureTLV...)
+	combinedData := append(gameRequestTLV, playerNameTLV...) // Combine GameRequest and PlayerName TLVs
+	combinedData = append(combinedData, signatureTLV...)     // Add Signature TLV
 
 	// 4. Hash TLV
-	messageHash := GenerateSignature(combinedData)
-	log.Printf("Calculated hash: %s", messageHash)
+	messageHash := GenerateSignature(combinedData) // Generate hash over the combined data
 
 	hashTLV, err := EncodeTLV(ByteData, []byte(messageHash))
 	if err != nil {
 		return fmt.Errorf("error encoding hash: %v", err)
 	}
-	log.Printf("Encoded TLV: Tag=ByteData, Length=%d, Value=%s", len(messageHash), messageHash)
 
 	// Combine all TLVs in the correct order
-	finalMessage := append(gameRequestTLV, playernameTLV...)
+	finalMessage := append(gameRequestTLV, playerNameTLV...)
 	finalMessage = append(finalMessage, signatureTLV...)
-	finalMessage = append(finalMessage, hashTLV...)
+	finalMessage = append(finalMessage, hashTLV...) // Final combined message
 
-	// Log the final message
-	log.Printf("Final message (Raw): %v", finalMessage)
-
-	// Send the encoded TLV message to the client
+	// Send the encoded TLV message to the client/server
 	_, err = conn.Write(finalMessage)
 	if err != nil {
 		return fmt.Errorf("error sending message: %v", err)
 	}
-	log.Println("Message sent successfully.")
+
+	return nil
+}
+
+// SendBoardRequest sends a BoardRequest and signature TLVs to the server
+func SendBoardRequest(conn net.Conn, gameID string, signature []byte) error {
+	// Create the BoardRequest TLV
+	boardRequestData := []byte(gameID) // or any other relevant data
+	boardRequestTLV, err := EncodeTLV(BoardRequest, boardRequestData)
+	if err != nil {
+		return fmt.Errorf("error encoding BoardRequest TLV: %v", err)
+	}
+
+	// Send the BoardRequest TLV
+	_, err = conn.Write(boardRequestTLV)
+	if err != nil {
+		return fmt.Errorf("error sending BoardRequest TLV: %v", err)
+	}
+
+	// Create the Signature TLV
+	signatureTLV, err := EncodeTLV(ByteData, signature)
+	if err != nil {
+		return fmt.Errorf("error encoding Signature TLV: %v", err)
+	}
+
+	// Send the Signature TLV
+	_, err = conn.Write(signatureTLV)
+	if err != nil {
+		return fmt.Errorf("error sending Signature TLV: %v", err)
+	}
+	return nil
+}
+
+func SendMoveRequest(conn net.Conn, client *Client, move string) error {
+	if conn == nil {
+		return fmt.Errorf("connection is nil")
+	}
+
+	// 1. ActionRequest TLV (move request)
+	actionRequestData := []byte(move) // The move made by the player
+	actionRequestTLV, err := EncodeTLV(ActionRequest, actionRequestData)
+	if err != nil {
+		return fmt.Errorf("error encoding ActionRequest: %v", err)
+	}
+
+	gameIDStr := GlobalGame.gameId.String()
+	gameIDData := []byte(gameIDStr)
+	gameIDTLV, err := EncodeTLV(ByteData, gameIDData)
+	if err != nil {
+		return fmt.Errorf("error encoding GameID: %v", err)
+	}
+
+	playerNameData := []byte(client.FirstName)
+	playerNameTLV, err := EncodeTLV(ByteData, playerNameData)
+	if err != nil {
+		return fmt.Errorf("error encoding player name: %v", err)
+	}
+
+	// 4. Signature TLV (client signature for integrity)
+	signatureData := []byte(client.Signature)
+	signatureTLV, err := EncodeTLV(ByteData, signatureData)
+	if err != nil {
+		return fmt.Errorf("error encoding signature: %v", err)
+	}
+
+	// Prepare combined data for hash calculation (excluding the hash TLV)
+	combinedData := append(actionRequestTLV, gameIDTLV...)
+	combinedData = append(combinedData, playerNameTLV...)
+	combinedData = append(combinedData, signatureTLV...)
+
+	// 5. Hash TLV (for message integrity)
+	messageHash := GenerateSignature(combinedData) // Generate hash over the combined data
+
+	hashTLV, err := EncodeTLV(ByteData, []byte(messageHash))
+	if err != nil {
+		return fmt.Errorf("error encoding hash: %v", err)
+	}
+
+	// Combine all TLVs in the correct order
+	finalMessage := append(actionRequestTLV, gameIDTLV...)
+	finalMessage = append(finalMessage, playerNameTLV...)
+	finalMessage = append(finalMessage, signatureTLV...)
+	finalMessage = append(finalMessage, hashTLV...)
+
+	// Encrypt the entire message
+	encryptedMessage, err := EncryptMessage(finalMessage)
+	if err != nil {
+		return fmt.Errorf("error encrypting message: %v", err)
+	}
+
+	// Send the encrypted message to the server
+	_, err = conn.Write(encryptedMessage)
+	if err != nil {
+		return fmt.Errorf("error sending encrypted message: %v", err)
+	}
+
 	return nil
 }
